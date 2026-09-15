@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(10x-shape)",
+      "Skill(10x-shape:*)",
+      "Bash(npm run *)"
+    ]
+  }
+}
