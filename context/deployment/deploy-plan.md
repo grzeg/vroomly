@@ -2,8 +2,10 @@
 project: vroomly
 platform: Cloudflare Workers
 planned_at: 2026-09-15
-status: in-progress
+status: deployed
 github_repo: https://github.com/grzeg/vroomly
+deployed_url: https://vroomly.grzegorz-martowski.workers.dev
+cloudflare_account_id: bfa4adae2be18d5e4485a515470315ee
 ---
 
 # Vroomly — First Production Deployment (Cloudflare Workers)
@@ -60,41 +62,39 @@ User then asked to use `grzegorz.martowski@gmail.com` instead. Re-authenticated 
 
 Note: pushing initially failed with a 403 because macOS's `osxkeychain` credential helper had cached the previous account's token for `github.com` and took priority over `gh`'s own credential helper. Fixed with `gh auth setup-git`, which registers `gh auth git-credential` as the per-host helper for `github.com`/`gist.github.com`, taking precedence over the global `osxkeychain` default.
 
-### 6. GitHub repo secrets — pending, **[USER]**
+### 6. GitHub repo secrets — done, **[USER]**
 
-```bash
-gh secret set SUPABASE_URL --repo grzeg/vroomly
-gh secret set SUPABASE_KEY --repo grzeg/vroomly
-```
-Each prompts interactively for the value — the agent does not type/paste real secret values. (Schema field is `optional: true`, so CI runs before these are set just build without them rather than failing on their absence.)
+Set via `gh secret set SUPABASE_URL --repo grzeg/vroomly` / `gh secret set SUPABASE_KEY --repo grzeg/vroomly`, entered interactively by the user.
 
-### 7. Local Cloudflare auth + local Supabase dev secrets — pending, **[USER]**
+### 7. Local Cloudflare auth + local Supabase dev secrets — done
 
-- `./node_modules/.bin/wrangler login` — interactive OAuth browser flow, user-only. Verify after with `./node_modules/.bin/wrangler whoami`. If the account has multiple Cloudflare accounts, note the `account_id` from that output in case later commands prompt ambiguously.
-- `cp .env.example .dev.vars` (agent can do this — empty placeholders, gitignored).
-- User fills in `.dev.vars` with their existing Supabase project's URL/anon key from the Supabase dashboard themselves.
-- Optional sanity check: `npm run dev`, visit `/dashboard`, confirm redirect to `/auth/signin` (proves middleware wiring, not secret correctness — see step 10's caveat).
+- `./node_modules/.bin/wrangler login` — confirmed via `wrangler whoami`: single account (`bfa4adae2be18d5e4485a515470315ee`, grzegorz.martowski@gmail.com), no `account_id` ambiguity, none added to `wrangler.jsonc`.
+- `.dev.vars` created from `.env.example`; user filled in their Supabase project's URL/anon key themselves (confirmed non-empty without reading values).
 
-### 8. Production secrets — pending, after steps 6/7
+### 8. Production secrets — done
 
 ```bash
 ./node_modules/.bin/wrangler secret put SUPABASE_URL
 ./node_modules/.bin/wrangler secret put SUPABASE_KEY
 ```
-**[USER]** enters values at each interactive prompt — never via `--var` (keeps secrets out of shell history/process args). If `secret put` errors because the `vroomly` Worker doesn't exist on Cloudflare yet, deploy once first (step 9), then run these, then redeploy.
+User entered values interactively. Verified present via `wrangler secret list` (names only, no values returned).
 
-### 9. First deploy — pending, **[GO-AHEAD]**
+### 9. First deploy — done, **[GO-AHEAD]**
 
 ```bash
 npm run deploy
 ```
-Confirm with the user before running — first-ever publish, live at a public `*.workers.dev` URL. Watch for a first-time subdomain-registration prompt or a multi-account picker if applicable.
+User confirmed before running. First attempt failed: the Cloudflare account had no `workers.dev` subdomain registered yet, and the non-interactive shell auto-answered "no" to the registration prompt. The dashboard onboarding link Wrangler printed 404'd (stale URL format); the per-worker Domains & Routes tab didn't offer a direct enable toggle either. Resolved by re-running with the prompt answered directly: `echo "y" | ./node_modules/.bin/wrangler deploy`, which registered a subdomain automatically (derived from the account) and completed the deploy.
 
-### 10. Post-deploy verification — pending
+**Live at: https://vroomly.grzegorz-martowski.workers.dev**
 
-Agent-checkable directly: root URL loads (200), `/dashboard` unauthenticated redirects to `/auth/signin`, `wrangler tail`/`npm run tail` shows no runtime errors while poking the URL.
+A `SESSION` KV namespace (`vroomly-session`) was auto-provisioned by the adapter's default session feature during this deploy — unused by app code (confirmed no `Astro.session`/`astro:assets` Image usage in `src/`), so no functional impact, just an unused free-tier resource sitting on the account.
 
-**Not sufficient on its own** — the silent-null bug (see Context) means an unauth redirect looks identical whether secrets are correct or completely broken. **[USER]** must sign up/sign in on the live URL themselves (agent cannot enter credentials or create accounts) and confirm `/dashboard` actually renders post-login. Do this promptly — Cloudflare's free-tier log retention is only ~3 days.
+### 10. Post-deploy verification — partially done
+
+Agent-checked: root URL → 200. `/dashboard` unauthenticated → 302 redirect to `/auth/signin`, confirming middleware wiring.
+
+**Still pending — [USER] only**: the silent-null bug (see Context) means the redirect above looks identical whether secrets are correct or completely broken. Sign up/sign in on the live URL yourself and confirm `/dashboard` actually renders post-login — that's the real proof the Cloudflare secrets are wired correctly. Do this promptly — Cloudflare's free-tier log retention is only ~3 days.
 
 ### 11. CI auto-deploy: deferred, not part of this plan
 
@@ -110,6 +110,6 @@ Fix: added `"postinstall": "astro sync"` to `package.json`'s scripts, so `npm ci
 
 - [x] `npm run lint` and `npm run build` pass locally (including a simulated fresh install).
 - [x] CI run green on `grzeg/vroomly` for the postinstall-fix commit.
-- [ ] Deployed root URL returns 200; `/dashboard` unauth redirects correctly.
+- [x] Deployed root URL returns 200; `/dashboard` unauth redirects correctly.
 - [ ] **[USER]**-performed sign-in proves auth actually works end-to-end in production.
 - [ ] `wrangler tail` shows no runtime exceptions during the verification pass.
